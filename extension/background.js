@@ -1,5 +1,5 @@
 // EDIT THIS after you deploy to Railway:
-const API_BASE = 'https://YOUR-RAILWAY-URL.up.railway.app';
+const API_BASE = 'https://ghlduplicatehorizon-production.up.railway.app';
 
 // OPTIONAL: only set this if you also set EXTENSION_SHARED_SECRET on the Railway service.
 // Leave as '' if you didn't configure that env var.
