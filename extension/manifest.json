@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "GHL Duplicate Contact (Fundara)",
+  "version": "1.0.0",
+  "description": "Adds a Duplicate Contact button inside GoHighLevel for one sub-account.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://YOUR-RAILWAY-URL.up.railway.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://app.gohighlevel.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
