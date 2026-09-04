@@ -1,72 +1,80 @@
-# GHL Duplicate Contact — Chrome Extension + Backend
+# GHL Duplicate Contact — Direct Custom JS Integration
 
-Adds a real "Duplicate Contact" button inside GoHighLevel, scoped to sub-account
-`NOzIY7QjqCaxRk3Scl3A` only. Duplicates every field on the contact **except** the
-Work Order custom field (`contact.work_order`).
+Adds a real "Duplicate Contact" button directly inside GoHighLevel, scoped to
+sub-account `NOzIY7QjqCaxRk3Scl3A` only. Duplicates every field on the contact
+**except** the Work Order custom field (`contact.work_order`).
 
-Two pieces:
-- `server.js` (+ `package.json`) — small backend, deployed to Railway, holds your GHL
-  API token and does the actual contact read/create.
-- `extension/` — a Chrome extension (Manifest V3) that injects the button into GHL's
-  pages and calls the backend.
+Same shape as your existing `inject.js` loader for blocking "+ Add Contact": one
+`<script src="...">` tag in GHL's Custom JS field, no extension or per-person install
+step required.
 
 ## 1. Deploy the backend to Railway
 
-- Push `server.js`, `package.json`, and `.env.example` to a new GitHub repo (drag/drop
-  upload via the GitHub web UI works fine).
-- Railway → New Project → Deploy from GitHub repo → select it. It auto-detects Node
-  and runs `npm start`.
-- Set these Variables in Railway:
-  - `GHL_API_TOKEN` — a Private Integration token scoped to read/write Contacts for
-    this sub-account. **Rotate the token you pasted earlier in chat before using it
-    here** — anything typed into a chat should be treated as compromised.
+Already done if you're reading this after your earlier deploy — the widget script is
+served from the same backend at `/widget.js`. If you're setting this up fresh:
+
+- Push `server.js`, `package.json`, `.env.example`, and the `public/` folder (containing
+  `widget.js`) to your GitHub repo.
+- Railway → New Project → Deploy from GitHub repo. Set env vars:
+  - `GHL_API_TOKEN` — Private Integration token scoped to read/write Contacts for this
+    sub-account.
   - `GHL_LOCATION_ID` = `NOzIY7QjqCaxRk3Scl3A`
   - `WORK_ORDER_FIELD_ID` = `1ApWjVRcaskJCYYYOBRM`
-  - `EXTENSION_SHARED_SECRET` — optional. If you set this, also set the same value in
-    `extension/background.js` (see below). It's a basic check, not real auth — anyone
-    with the unpacked extension folder can read the value — but it stops randoms from
-    hitting the public URL if they find it.
-- Once deployed, Settings → Networking → Generate Domain if you don't already have a
-  public URL. Copy it, e.g. `https://ghl-duplicate-contact-production.up.railway.app`.
+- Generate a public domain under Settings → Networking if you don't have one.
 
-## 2. Point the extension at your Railway URL
+## 2. Confirm the widget script is reachable
 
-Edit two files in `extension/`:
+Visit `https://<your-railway-url>/widget.js` in a browser tab — you should see the raw
+JavaScript, not a 404.
 
-- `manifest.json` — replace `https://YOUR-RAILWAY-URL.up.railway.app/*` in
-  `host_permissions` with your real Railway URL.
-- `background.js` — replace the `API_BASE` constant at the top with the same URL. If
-  you set `EXTENSION_SHARED_SECRET` on Railway, also set `EXTENSION_KEY` to match.
+## 3. Add it to GHL's Custom JS field
 
-## 3. Load the extension in Chrome
+Settings → (Agency or this sub-account's) Custom JS. Add:
 
-1. Go to `chrome://extensions`
-2. Turn on **Developer mode** (top right)
-3. Click **Load unpacked**
-4. Select the `extension/` folder
-5. Open GHL for this sub-account (any page under
-   `.../location/NOzIY7QjqCaxRk3Scl3A/...`) — you should see a blue floating button in
-   the bottom-right corner.
+```html
+<script src="https://<your-railway-url>/widget.js"></script>
+```
+
+You can add this alongside your existing `inject.js` loader tag — multiple `<script>`
+tags in the same field are fine, they don't conflict. The script checks the location ID
+itself before doing anything, so it's safe to add at the agency level (like your
+existing loader) and it'll stay inert everywhere except this one sub-account.
 
 ## How it behaves
 
-- **On a contact detail page**: button reads "Duplicate This Contact." Click it →
-  duplicates that contact → opens the new one in a new tab.
+- **On a contact detail page**: a floating blue button, bottom-right, reads "Duplicate
+  This Contact." Click it → duplicates that contact → opens the new one in a new tab.
 - **On the contacts list view**: the button only appears once you've checked at least
-  one row, and shows "Duplicate Selected (N)." Click it → duplicates each selected
-  contact.
-- The button only renders on this one sub-account's pages — it's inert everywhere else
-  in GHL.
+  one row, and shows "Duplicate Selected (N)."
+- Navigation and selection detection are debounced/event-based rather than rescanning
+  the whole page on every DOM change, so it shouldn't add noticeable load-time overhead.
 
 ## If the list-view button doesn't pick up contact IDs
 
-I built the row/checkbox detection against GHL's typical table markup, but I can't
+The row/checkbox detection is built against GHL's typical table markup, but I can't
 inspect your live authenticated GHL instance to confirm exact selectors. If clicking
-"Duplicate Selected" on the list view doesn't work, open DevTools on that page,
-right-click one contact row → Inspect → copy the outer HTML, and send it to me — I'll
-tighten `getContactIdFromRow()` / `getSelectedContactIds()` in `content.js` to match.
-The contact-detail-page button doesn't have this risk since it reads the ID from the
-URL, not the DOM.
+"Duplicate Selected" doesn't work, open DevTools on the list page, right-click one
+contact row → Inspect → copy the outer HTML, and send it to me — I'll tighten
+`getContactIdFromRow()` / `getSelectedContactIds()` in `public/widget.js` to match. The
+detail-page button doesn't have this risk since it reads the ID from the URL.
+
+## Updating the script later
+
+Since it's loaded via `<script src>` rather than pasted inline, updating it is just a
+matter of pushing a new `public/widget.js` to GitHub — Railway redeploys automatically
+and every page load picks up the new version. No need to touch the GHL Custom JS field
+again once it's added.
+
+## A note on exposure
+
+Because this runs as plain client-side JavaScript, `API_BASE` and the `/api/duplicate`
+endpoint are visible to anyone who views the page source — there's no way to keep a
+real secret in browser-side code. The backend still holds your GHL API token
+server-side (never exposed), and any call to `/api/duplicate` is scoped to contacts
+that exist in your location, so the practical blast radius of someone else finding and
+poking the endpoint is limited to being able to trigger contact duplication — not read
+or exfiltrate broader account data. If that's a concern, it's the same tradeoff your
+existing `inject.js` setup already carries.
 
 ## Notes
 
@@ -74,3 +82,12 @@ URL, not the DOM.
 - All fields — including tags — are copied as-is except the Work Order field.
 - To exclude additional fields later, add their field IDs to the filter in
   `buildClonePayload()` in `server.js`.
+
+---
+
+### Chrome extension (previous approach, kept for reference)
+
+An earlier iteration of this used a Chrome extension (`extension/` folder) instead of
+direct GHL integration. It still works if you ever want a per-person install instead of
+an account-wide script, but the Custom JS approach above is now the primary path.
+
