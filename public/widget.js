@@ -1,6 +1,10 @@
 (() => {
   const TARGET_LOCATION_ID = 'NOzIY7QjqCaxRk3Scl3A';
 
+  // Prevent double-injection if the bookmarklet is clicked more than once.
+  if (window.__ghlDupContactWidgetLoaded) return;
+  window.__ghlDupContactWidgetLoaded = true;
+
   function getLocationIdFromUrl() {
     const m = window.location.pathname.match(/\/location\/([a-zA-Z0-9]+)/);
     return m ? m[1] : null;
@@ -8,7 +12,10 @@
 
   // Only run on this one sub-account, even if this script ends up loaded
   // agency-wide (matches how the existing inject.js loader is scoped).
-  if (getLocationIdFromUrl() !== TARGET_LOCATION_ID) return;
+  if (getLocationIdFromUrl() !== TARGET_LOCATION_ID) {
+    alert('This tool only works on the Horizon Windows sub-account.');
+    return;
+  }
 
   // Resolve the backend origin from the <script src> that loaded this file.
   // Falls back to the known Railway URL rather than window.location.origin,

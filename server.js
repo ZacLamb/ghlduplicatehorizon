@@ -13,7 +13,7 @@ const {
   GHL_API_TOKEN,
   GHL_LOCATION_ID,
   WORK_ORDER_FIELD_ID = '1ApWjVRcaskJCYYYOBRM', // contact.work_order
-  EXTENSION_SHARED_SECRET, // optional lightweight protection, see README
+  ACCESS_KEY, // optional lightweight protection, see README
   PORT = 3000,
 } = process.env;
 
@@ -100,28 +100,29 @@ async function duplicateContact(contactId) {
   return { original, clone };
 }
 
-function checkExtensionKey(req, res) {
-  if (!EXTENSION_SHARED_SECRET) return true; // no protection configured, allow
-  const key = req.header('X-Extension-Key');
-  if (key !== EXTENSION_SHARED_SECRET) {
+function checkAccessKey(req, res) {
+  if (!ACCESS_KEY) return true; // no protection configured, allow
+  const key = req.header('X-Access-Key');
+  if (key !== ACCESS_KEY) {
     res.status(401).json({ success: false, error: 'Unauthorized' });
     return false;
   }
   return true;
 }
 
-// CORS: allow the extension's background worker / any origin to call this JSON API.
+// CORS: allow the bookmarklet's script (running on app.gohighlevel.com/app.fundara.co)
+// to call this JSON API cross-origin.
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, X-Extension-Key');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, X-Access-Key');
   res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
-// Called by the Chrome extension when the "Duplicate Contact" button is clicked.
+// Called when the "Duplicate Contact" button (loaded via the bookmarklet) is clicked.
 app.post('/api/duplicate', async (req, res) => {
-  if (!checkExtensionKey(req, res)) return;
+  if (!checkAccessKey(req, res)) return;
 
   const { contactId } = req.body || {};
   if (!contactId) {

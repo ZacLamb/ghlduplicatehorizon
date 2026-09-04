@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Duplicate Contact — Bookmarklet Install</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 60px auto; padding: 0 20px; color: #1a1a1a; }
+  h1 { font-size: 20px; }
+  .bookmarklet {
+    display: inline-block;
+    background: #1a73e8;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+    cursor: grab;
+    margin: 20px 0;
+  }
+  ol { line-height: 1.8; }
+  code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h1>Duplicate Contact — Horizon</h1>
+  <p>Drag the button below into your browser's bookmarks bar. If your bookmarks bar isn't visible, show it first (Chrome: Cmd+Shift+B on Mac, Ctrl+Shift+B on Windows).</p>
+
+  <a class="bookmarklet" href="javascript:(function(){var d=document,s=d.createElement('script');s.src='https://ghlduplicatehorizon-production.up.railway.app/widget.js?t='+Date.now();d.head.appendChild(s);})();">Duplicate Contact</a>
+
+  <ol>
+    <li>Drag the blue button above up into your bookmarks bar and drop it there.</li>
+    <li>Open GHL, go to the Horizon sub-account, and open a contact (or check some boxes on the contacts list).</li>
+    <li>Click the bookmark. A "Duplicate This Contact" (or "Duplicate Selected") button will appear in the bottom-right corner of the page.</li>
+    <li>Click that button to actually duplicate the contact(s).</li>
+  </ol>
+
+  <p>If dragging doesn't work in your browser (some block dragging <code>javascript:</code> links), right-click your bookmarks bar → Add Page, name it "Duplicate Contact", and paste this into the URL field:</p>
+  <p><code>javascript:(function(){var d=document,s=d.createElement('script');s.src='https://ghlduplicatehorizon-production.up.railway.app/widget.js?t='+Date.now();d.head.appendChild(s);})();</code></p>
+</body>
+</html>
