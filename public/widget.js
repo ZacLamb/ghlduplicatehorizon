@@ -10,16 +10,18 @@
   // agency-wide (matches how the existing inject.js loader is scoped).
   if (getLocationIdFromUrl() !== TARGET_LOCATION_ID) return;
 
-  // Resolve the backend origin from the <script src> that loaded this file,
-  // so it doesn't need to be hardcoded here.
+  // Resolve the backend origin from the <script src> that loaded this file.
+  // Falls back to the known Railway URL rather than window.location.origin,
+  // since a same-origin fallback would point at app.gohighlevel.com itself
+  // (document.currentScript can be null for some async-loaded scripts).
   const API_BASE = (() => {
     try {
       const src = document.currentScript && document.currentScript.src;
       if (src) return new URL(src).origin;
     } catch (e) {
-      /* fall through to same-origin default below */
+      /* fall through to hardcoded default below */
     }
-    return window.location.origin;
+    return 'https://ghlduplicatehorizon-production.up.railway.app';
   })();
 
   function getContactIdFromDetailUrl() {
@@ -64,12 +66,11 @@
     if (container && document.body.contains(container)) return container;
     container = document.createElement('div');
     container.id = 'ghl-dup-contact-widget';
-    Object.assign(container.style, {
-      position: 'fixed',
-      bottom: '24px',
-      right: '24px',
-      zIndex: 999999,
-    });
+    container.style.setProperty('position', 'fixed', 'important');
+    container.style.setProperty('bottom', '24px', 'important');
+    container.style.setProperty('right', '24px', 'important');
+    container.style.setProperty('z-index', '2147483647', 'important');
+    container.style.setProperty('display', 'block', 'important');
     document.body.appendChild(container);
     return container;
   }
