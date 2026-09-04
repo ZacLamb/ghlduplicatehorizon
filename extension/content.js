@@ -147,17 +147,35 @@
     }
   }
 
-  // Re-render on navigation (GHL is a SPA) and on checkbox changes in list view.
-  let lastPath = '';
-  const observer = new MutationObserver(() => {
-    if (window.location.pathname !== lastPath) {
-      lastPath = window.location.pathname;
-      render();
-    } else if (isListView()) {
-      render(); // cheap re-check for checkbox selection changes
-    }
-  });
+  // Re-render on navigation (GHL is a SPA) — debounced so a burst of DOM changes
+  // (e.g. the initial page load, or list virtualization while scrolling) collapses
+  // into a single check instead of running on every individual mutation.
+  let lastPath = window.location.pathname;
+  let debounceTimer = null;
+  function scheduleNavCheck() {
+    if (debounceTimer) return;
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      if (window.location.pathname !== lastPath) {
+        lastPath = window.location.pathname;
+        render();
+      }
+    }, 250);
+  }
+  const observer = new MutationObserver(scheduleNavCheck);
   observer.observe(document.body, { childList: true, subtree: true });
+
+  // Selection changes on the list view are handled separately via a lightweight,
+  // targeted listener instead of rescanning the whole page on every DOM mutation.
+  document.addEventListener(
+    'change',
+    (e) => {
+      if (isListView() && e.target && e.target.matches('input[type="checkbox"]')) {
+        renderListButton();
+      }
+    },
+    true
+  );
 
   render();
 })();
