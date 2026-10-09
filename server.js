@@ -14,6 +14,7 @@ const {
   GHL_LOCATION_ID,
   WORK_ORDER_FIELD_ID = '1ApWjVRcaskJCYYYOBRM', // contact.work_order
   ACCESS_KEY, // optional lightweight protection, see README
+  COPY_TAGS = 'false', // tags can fire "Tag Added" workflows, so off by default
   PORT = 3000,
 } = process.env;
 
@@ -44,15 +45,10 @@ async function getContact(contactId) {
   return data.contact;
 }
 
-// Field IDs to strip from every duplicate. Add more here as you identify them
-// (see the /api/fields diagnostic route below to look up IDs by name).
-const EXCLUDED_FIELD_IDS = [
-  WORK_ORDER_FIELD_ID,
-].filter(Boolean);
-
 function buildClonePayload(original) {
+  // Copy every custom field except Work Order.
   const customFields = (original.customFields || []).filter(
-    (f) => !EXCLUDED_FIELD_IDS.includes(f.id)
+    (f) => f.id !== WORK_ORDER_FIELD_ID
   );
 
   const payload = {
@@ -73,9 +69,12 @@ function buildClonePayload(original) {
     timezone: original.timezone,
     source: original.source,
     dnd: original.dnd,
-    tags: original.tags || [],
     customFields,
   };
+
+  // Tags are NOT copied by default: copying them fires "Tag Added" automations.
+  // Appointments/calendar events and workflow enrollments are never copied.
+  if (COPY_TAGS === 'true') payload.tags = original.tags || [];
 
   // Strip undefined/null so we don't send empty overwrites to GHL.
   Object.keys(payload).forEach((k) => {
@@ -120,36 +119,9 @@ function checkAccessKey(req, res) {
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Content-Type, X-Access-Key');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
-});
-
-// DIAGNOSTIC: visit this in a browser to see every custom field's name next to
-// its actual internal id (the id needed for EXCLUDED_FIELD_IDS above -- the
-// merge-tag key like {{contact.total_invoice}} shown in GHL's UI is NOT the
-// same thing as this id). Remove this route once you're done looking things up
-// if you'd rather not leave it publicly reachable.
-app.get('/api/fields', async (req, res) => {
-  try {
-    const r = await fetch(
-      `${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields?model=contact`,
-      { headers: ghlHeaders() }
-    );
-    const data = await r.json();
-    if (!r.ok) {
-      return res.status(r.status).json(data);
-    }
-    const fields = (data.customFields || []).map((f) => ({
-      name: f.name,
-      id: f.id,
-      key: f.fieldKey,
-      dataType: f.dataType,
-    }));
-    res.json({ fields });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // Called when the "Duplicate Contact" button (loaded via the bookmarklet) is clicked.
