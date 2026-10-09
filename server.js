@@ -11,10 +11,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const {
   GHL_API_TOKEN,
-  GHL_LOCATION_ID,
+  GHL_LOCATION_ID = 'NOzIY7QjqCaxRk3Scl3A',
   WORK_ORDER_FIELD_ID = '1ApWjVRcaskJCYYYOBRM', // contact.work_order
-  ACCESS_KEY, // optional lightweight protection, see README
+  EXTRA_EXCLUDED_FIELD_IDS = '', // optional: comma-separated extra field IDs to skip
   COPY_TAGS = 'false', // tags can fire "Tag Added" workflows, so off by default
+  ACCESS_KEY, // optional lightweight protection
   PORT = 3000,
 } = process.env;
 
@@ -34,22 +35,38 @@ function ghlHeaders() {
   };
 }
 
-async function getContact(contactId) {
-  const res = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
-    headers: ghlHeaders(),
-  });
+// Fields never copied to the duplicate.
+const EXCLUDED_FIELD_IDS = [
+  WORK_ORDER_FIELD_ID,
+  'nKm84bjA43r1edqok1NT', // Estimate Amount
+  'IcIi2J8NJVmFC2eEyWTR', // Subtotal
+  'QdPPepmKDLBbWu7nQIhT', // Tax
+  'fl1Ic4t2SBeAUnNwW1kL', // Total Invoice
+  'nQzodCdiXaSTYZWDGF7h', // Deposit Paid
+  'ghsBX4Gw8qZCXWNx47Q0', // Balance Due
+  ...EXTRA_EXCLUDED_FIELD_IDS.split(',').map((s) => s.trim()),
+].filter(Boolean);
+
+async function listCustomFields() {
+  const res = await fetch(
+    `${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields?model=contact`,
+    { headers: ghlHeaders() }
+  );
   const data = await res.json();
-  if (!res.ok) {
-    throw new Error(`GHL get contact failed (${res.status}): ${JSON.stringify(data)}`);
-  }
+  if (!res.ok) throw new Error(`GHL custom fields failed (${res.status}): ${JSON.stringify(data)}`);
+  return data.customFields || [];
+}
+
+async function getContact(contactId) {
+  const res = await fetch(`${GHL_BASE}/contacts/${contactId}`, { headers: ghlHeaders() });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`GHL get contact failed (${res.status}): ${JSON.stringify(data)}`);
   return data.contact;
 }
 
 function buildClonePayload(original) {
-  // Copy every custom field except Work Order.
-  const customFields = (original.customFields || []).filter(
-    (f) => f.id !== WORK_ORDER_FIELD_ID
-  );
+  const skip = new Set(EXCLUDED_FIELD_IDS);
+  const customFields = (original.customFields || []).filter((f) => !skip.has(f.id));
 
   const payload = {
     locationId: original.locationId || GHL_LOCATION_ID,
@@ -76,11 +93,9 @@ function buildClonePayload(original) {
   // Appointments/calendar events and workflow enrollments are never copied.
   if (COPY_TAGS === 'true') payload.tags = original.tags || [];
 
-  // Strip undefined/null so we don't send empty overwrites to GHL.
   Object.keys(payload).forEach((k) => {
     if (payload[k] === undefined || payload[k] === null) delete payload[k];
   });
-
   return payload;
 }
 
@@ -91,9 +106,7 @@ async function createContact(payload) {
     body: JSON.stringify(payload),
   });
   const data = await res.json();
-  if (!res.ok) {
-    throw new Error(`GHL create contact failed (${res.status}): ${JSON.stringify(data)}`);
-  }
+  if (!res.ok) throw new Error(`GHL create contact failed (${res.status}): ${JSON.stringify(data)}`);
   return data.contact;
 }
 
@@ -105,41 +118,40 @@ async function duplicateContact(contactId) {
 }
 
 function checkAccessKey(req, res) {
-  if (!ACCESS_KEY) return true; // no protection configured, allow
-  const key = req.header('X-Access-Key');
-  if (key !== ACCESS_KEY) {
+  if (!ACCESS_KEY) return true;
+  if (req.header('X-Access-Key') !== ACCESS_KEY) {
     res.status(401).json({ success: false, error: 'Unauthorized' });
     return false;
   }
   return true;
 }
 
-// CORS: allow the bookmarklet's script (running on app.gohighlevel.com/app.fundara.co)
-// to call this JSON API cross-origin.
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Content-Type, X-Access-Key');
-  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
-// Called when the "Duplicate Contact" button (loaded via the bookmarklet) is clicked.
+// Diagnostic: list contact custom fields (name, id, key).
+app.get('/api/fields', async (req, res) => {
+  if (!checkAccessKey(req, res)) return;
+  try {
+    const fields = await listCustomFields();
+    res.json(fields.map((f) => ({ name: f.name, id: f.id, key: f.fieldKey, dataType: f.dataType })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/duplicate', async (req, res) => {
   if (!checkAccessKey(req, res)) return;
-
   const { contactId } = req.body || {};
-  if (!contactId) {
-    return res.status(400).json({ success: false, error: 'Missing contactId' });
-  }
-
+  if (!contactId) return res.status(400).json({ success: false, error: 'Missing contactId' });
   try {
     const { clone } = await duplicateContact(contactId);
-    res.json({
-      success: true,
-      newContactId: clone.id,
-      locationId: clone.locationId || GHL_LOCATION_ID,
-    });
+    res.json({ success: true, newContactId: clone.id, locationId: clone.locationId || GHL_LOCATION_ID });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: err.message });
