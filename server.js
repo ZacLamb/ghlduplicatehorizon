@@ -57,6 +57,23 @@ async function listCustomFields() {
   return data.customFields || [];
 }
 
+// Anything invoice/payment related is excluded by NAME (so we don't need every field ID).
+// Covers: Estimate Amount, Subtotal, Tax, Total Invoice, Deposit Paid, Balance Due,
+// Payment Status/Date/Method, Invoice Links, Stripe Session Id, Invoice Numbers,
+// Invoice to send to Prop Manage, Installer Invoice, and Work Order.
+const EXCLUDED_NAME_RX =
+  /invoice|stripe|payment|deposit|balance|estimate|subtotal|^\s*tax\s*$|work[\s_-]*order/i;
+
+let excludedCache = { at: 0, ids: [], names: [] };
+async function getNameExcludedFields() {
+  if (Date.now() - excludedCache.at < 5 * 60 * 1000) return excludedCache;
+  const fields = await listCustomFields();
+  const hit = fields.filter((f) => EXCLUDED_NAME_RX.test(`${f.name || ''} ${f.fieldKey || ''}`));
+  excludedCache = { at: Date.now(), ids: hit.map((f) => f.id), names: hit.map((f) => f.name) };
+  console.log('Excluded by name:', excludedCache.names);
+  return excludedCache;
+}
+
 async function getContact(contactId) {
   const res = await fetch(`${GHL_BASE}/contacts/${contactId}`, { headers: ghlHeaders() });
   const data = await res.json();
@@ -64,8 +81,10 @@ async function getContact(contactId) {
   return data.contact;
 }
 
-function buildClonePayload(original) {
-  const skip = new Set(EXCLUDED_FIELD_IDS);
+async function buildClonePayload(original) {
+  // Fail closed: if the field lookup fails, the duplicate fails rather than copying invoice data.
+  const { ids } = await getNameExcludedFields();
+  const skip = new Set([...EXCLUDED_FIELD_IDS, ...ids]);
   const customFields = (original.customFields || []).filter((f) => !skip.has(f.id));
 
   const payload = {
@@ -112,7 +131,7 @@ async function createContact(payload) {
 
 async function duplicateContact(contactId) {
   const original = await getContact(contactId);
-  const payload = buildClonePayload(original);
+  const payload = await buildClonePayload(original);
   const clone = await createContact(payload);
   return { original, clone };
 }
@@ -140,6 +159,17 @@ app.get('/api/fields', async (req, res) => {
   try {
     const fields = await listCustomFields();
     res.json(fields.map((f) => ({ name: f.name, id: f.id, key: f.fieldKey, dataType: f.dataType })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Diagnostic: shows which fields are skipped when duplicating.
+app.get('/api/excluded', async (req, res) => {
+  if (!checkAccessKey(req, res)) return;
+  try {
+    const { names } = await getNameExcludedFields();
+    res.json({ excludedByName: names, excludedIds: EXCLUDED_FIELD_IDS });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
