@@ -68,7 +68,12 @@ let excludedCache = { at: 0, ids: [], names: [] };
 async function getNameExcludedFields() {
   if (Date.now() - excludedCache.at < 5 * 60 * 1000) return excludedCache;
   const fields = await listCustomFields();
-  const hit = fields.filter((f) => EXCLUDED_NAME_RX.test(`${f.name || ''} ${f.fieldKey || ''}`));
+  // Address fields (e.g. a custom "Billing Address") are always copied, even if the name
+  // happens to contain an excluded word.
+  const hit = fields.filter((f) => {
+    const label = `${f.name || ''} ${f.fieldKey || ''}`;
+    return EXCLUDED_NAME_RX.test(label) && !/address|street|city|state|zip|postal/i.test(label);
+  });
   excludedCache = { at: Date.now(), ids: hit.map((f) => f.id), names: hit.map((f) => f.name) };
   console.log('Excluded by name:', excludedCache.names);
   return excludedCache;
